@@ -16,6 +16,7 @@
       align-items: center;
       justify-content: center;
       position: relative;
+      font-family: sans-serif;
     }
     #video {
       width: 100%;
@@ -35,6 +36,17 @@
       border-radius: 0.5rem;
       pointer-events: none;
     }
+    #overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 6rem;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
     canvas {
       display: none;
     }
@@ -44,6 +56,7 @@
   <video id="video" playsinline autoplay></video>
   <canvas id="canvas"></canvas>
   <div id="status">Initializing...</div>
+  <div id="overlay"></div>
 
   <!-- jsQR library -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -53,6 +66,7 @@
       const canvasEl = document.getElementById('canvas');
       const ctx = canvasEl.getContext('2d');
       const statusEl = document.getElementById('status');
+      const overlay = document.getElementById('overlay');
       let tokens = [];
       let lastCode = null;
 
@@ -90,24 +104,28 @@
           ctx.drawImage(video, 0, 0, canvasEl.width, canvasEl.height);
           const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
-          if (code) {
-            if (code.data !== lastCode) {
-              lastCode = code.data;
-              verifyCode(code.data);
-            }
+          if (code && code.data !== lastCode) {
+            lastCode = code.data;
+            verifyCode(code.data);
           }
         }
         requestAnimationFrame(scanFrame);
       }
 
       function verifyCode(data) {
-        if (tokens.includes(data)) {
-          statusEl.textContent = '✔️ Verified';
-          statusEl.style.color = 'lime';
-        } else {
-          statusEl.textContent = '❌ Not recognized';
-          statusEl.style.color = 'red';
-        }
+        const valid = tokens.includes(data);
+        statusEl.textContent = valid ? '✔️ Verified' : '❌ Not recognized';
+        statusEl.style.color = valid ? 'lime' : 'red';
+        showOverlay(valid);
+      }
+
+      function showOverlay(valid) {
+        overlay.textContent = valid ? '✔️' : '❌';
+        overlay.style.color = valid ? 'lime' : 'red';
+        overlay.style.display = 'flex';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+        }, 1000);
       }
     })();
   </script>

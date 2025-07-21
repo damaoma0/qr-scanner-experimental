@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>QR Check‑In</title>
+  <style>
+    video, canvas { width: 100%; max-width: 400px; }
+    #msg { font-size: 1.2em; margin-top: .5em; }
+  </style>
+</head>
+<body>
+  <h1>Scan QR</h1>
+  <video id="video" autoplay></video>
+  <canvas id="canvas" hidden></canvas>
+  <div id="msg">Point camera at a QR code…</div>
+
+  <!-- include jsQR library -->
+  <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const msg = document.getElementById('msg');
+
+    // 1) ask for camera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => video.srcObject = stream)
+      .catch(err => msg.textContent = 'Camera denied.');
+
+    // 2) scan loop
+    function tick() {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (code) {
+          validate(code.data);
+          return;  // stop scanning until next manual reset
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+    video.addEventListener('play', () => requestAnimationFrame(tick));
+
+    // 3) verify with backend
+    function validate(token) {
+      msg.textContent = 'Checking…';
+      fetch('https://your‑domain.com/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      .then(r => r.json())
+      .then(j => {
+        if (j.ok) {
+          msg.textContent = '✅ ' + j.message;
+        } else {
+          msg.textContent = '❌ ' + j.message;
+        }
+        // after 2 s, resume scanning
+        setTimeout(() => msg.textContent = 'Point camera at a QR code…'
+                         || requestAnimationFrame(tick), 2000);
+      })
+      .catch(_ => msg.textContent = '❌ Network error');
+    }
+  </script>
+</body>
+</html>

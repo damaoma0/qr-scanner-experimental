@@ -1,70 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>QR Check‑In</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Attendance Scanner</title>
+  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
   <style>
-    video, canvas { width: 100%; max-width: 400px; }
-    #msg { font-size: 1.2em; margin-top: .5em; }
+    body { font-family: sans-serif; text-align: center; }
+    video { width: 100%; max-width: 400px; }
+    #feedback { font-size: 3em; margin: 20px; }
+    .check { color: green; }
+    .cross { color: red; }
+    #attendance { list-style: none; padding: 0; }
+    #attendance li.attended { color: green; }
   </style>
 </head>
 <body>
-  <h1>Scan QR</h1>
+  <h1>Scan Your QR Code</h1>
   <video id="video" autoplay></video>
   <canvas id="canvas" hidden></canvas>
-  <div id="msg">Point camera at a QR code…</div>
+  <div id="feedback"></div>
+  <h2>Checked-in Guests</h2>
+  <ul id="attendance"></ul>
 
-  <!-- include jsQR library -->
-  <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
+  let tokensMap = {};
+  let seen = new Set();
+
+  fetch('tokens.json')
+    .then(res => res.json())
+    .then(data => { tokensMap = data; startCamera(); });
+
+  function startCamera() {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => { document.getElementById('video').srcObject = stream; tick(); });
+  }
+
+  function tick() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const msg = document.getElementById('msg');
-
-    // 1) ask for camera
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => video.srcObject = stream)
-      .catch(err => msg.textContent = 'Camera denied.');
-
-    // 2) scan loop
-    function tick() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
-        if (code) {
-          validate(code.data);
-          return;  // stop scanning until next manual reset
-        }
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height);
+      if (code && code.data) {
+        verifyToken(code.data.trim());
       }
-      requestAnimationFrame(tick);
     }
-    video.addEventListener('play', () => requestAnimationFrame(tick));
+    requestAnimationFrame(tick);
+  }
 
-    // 3) verify with backend
-    function validate(token) {
-      msg.textContent = 'Checking…';
-      fetch('https://damaoma0.github.io/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      })
-      .then(r => r.json())
-      .then(j => {
-        if (j.ok) {
-          msg.textContent = '✅ ' + j.message;
-        } else {
-          msg.textContent = '❌ ' + j.message;
-        }
-        // after 2 s, resume scanning
-        setTimeout(() => msg.textContent = 'Point camera at a QR code…'
-                         || requestAnimationFrame(tick), 2000);
-      })
-      .catch(_ => msg.textContent = '❌ Network error');
+  async function verifyToken(raw) {
+    const feedback = document.getElementById('feedback');
+    const buf = new TextEncoder().encode(raw);
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    const hashArray = Array.from(new Uint8Array(hashBuf));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    if (tokensMap[hashHex] && !seen.has(hashHex)) {
+      seen.add(hashHex);
+      feedback.textContent = '✔️';
+      feedback.className = 'check';
+      const li = document.createElement('li');
+      li.textContent = tokensMap[hashHex];
+      li.classList.add('attended');
+      document.getElementById('attendance').appendChild(li);
+    } else {
+      feedback.textContent = '❌';
+      feedback.className = 'cross';
     }
+
+    setTimeout(() => { feedback.textContent = ''; }, 1000);
+  }
   </script>
 </body>
 </html>

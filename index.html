@@ -2,299 +2,83 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Event Attendance Scanner</title>
-  <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>QR Code Scanner</title>
   <style>
-    body { font-family: sans-serif; text-align: center; }
-    video { border:1px solid #ccc; width: 100%; max-width: 400px; background: #000; }
-    #feedback { font-size: 3em; margin: 20px; }
-    .check { color: green; }
-    .cross { color: red; }
-    #attendance { list-style: none; padding: 0; }
-    #attendance li.attended { color: green; }
+    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
+    #video { width: 100%; height: auto; }
+    #status {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 2rem;
+      font-weight: bold;
+      background: rgba(0,0,0,0.5);
+      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+    }
+    canvas { display: none; }
   </style>
 </head>
 <body>
-  <h1>Scan Your QR Code</h1>
-  <video id="video" autoplay muted playsinline webkit-playsinline></video>
+  <video id="video" playsinline autoplay></video>
   <canvas id="canvas"></canvas>
-  <div id="feedback"></div>
-  <h2>Checked-in Guests</h2>
-  <ul id="attendance"></ul>
+  <div id="status"></div>
 
+  <!-- QR decoding library -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
-  let tokensMap = {}, seen = new Set();
-  const video    = document.getElementById('video');
-  const canvas   = document.getElementById('canvas');
-  const ctx      = canvas.getContext('2d');
-  const feedback = document.getElementById('feedback');
-
-  // 1) Load tokens
-  fetch('tokens.json')
-    .then(r => r.json())
-    .then(j => { tokensMap = j; initCamera(); })
-    .catch(e => console.error('Couldn’t load tokens.json:', e));
-
-  // 2) Initialize camera and request permission
-  async function initCamera() {
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { exact: 'environment' },
-          width:     { ideal: 1280 },
-          height:    { ideal: 720 }
-        }
-      });
-    } catch (err) {
-      console.warn('Exact rear camera failed, falling back to ideal:', err);
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width:     { ideal: 1280 },
-          height:    { ideal: 720 }
-        }
-      });
-    }
-
-    // Attach stream and start scanning
-    video.srcObject = stream;
-    video.onloadedmetadata = () => video.play();
-    stream.getVideoTracks().forEach(t => console.log('▶ Using camera:', t.label));
-    requestAnimationFrame(tick);
-  }
-
-  // 3) Main scanning loop
-  function tick() {
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width  = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(img.data, img.width, img.height);
-      if (code && code.data) verifyToken(code.data.trim());
-    }
-    requestAnimationFrame(tick);
-  }
-
-  // 4) Verify & feedback
-  async function verifyToken(raw) {
-    const buf     = new TextEncoder().encode(raw);
-    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
-    const hashHex = Array.from(new Uint8Array(hashBuf))
-                         .map(b => b.toString(16).padStart(2, '0'))
-                         .join('');
-    if (tokensMap[hashHex] && !seen.has(hashHex)) {
-      seen.add(hashHex);
-      feedback.textContent = '✔️'; feedback.className = 'check';
-      const li = document.createElement('li');
-      li.textContent = tokensMap[hashHex];
-      li.classList.add('attended');
-      document.getElementById('attendance').appendChild(li);
-    } else {
-      feedback.textContent = '❌'; feedback.className = 'cross';
-    }
-    setTimeout(() => feedback.textContent = '', 1000);
-  }
-  </script>
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Event Attendance Scanner</title>
-  <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
-  <style>
-    body { font-family: sans-serif; text-align: center; }
-    #cameraSelect { margin: 10px; padding: 5px; }
-    video { border:1px solid #ccc; width: 100%; max-width: 400px; background: #000; }
-    #feedback { font-size: 3em; margin: 20px; }
-    .check { color: green; }
-    .cross { color: red; }
-    #attendance { list-style: none; padding: 0; }
-    #attendance li.attended { color: green; }
-  </style>
-</head>
-<body>
-  <h1>Scan Your QR Code</h1>
-  <label for="cameraSelect">Camera:</label>
-  <select id="cameraSelect"></select>
-  <video id="video" autoplay muted playsinline webkit-playsinline></video>
-  <canvas id="canvas" hidden></canvas>
-  <div id="feedback"></div>
-  <h2>Checked-in Guests</h2>
-  <ul id="attendance"></ul>
-
-  <script>
-  let tokensMap = {}, seen = new Set();
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const feedback = document.getElementById('feedback');
-  const select = document.getElementById('cameraSelect');
-
-  // Load tokens and init camera UI
-  fetch('tokens.json')
-    .then(res => res.json())
-    .then(data => { tokensMap = data; initCameraUI(); })
-    .catch(err => console.error('Failed to load tokens:', err));
-
-  // Enumerate cameras and populate selector
-  async function initCameraUI() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoInputs = devices.filter(d => d.kind === 'videoinput');
-    videoInputs.forEach((d, i) => {
-      const opt = document.createElement('option');
-      opt.value = d.deviceId;
-      opt.text = d.label || `Camera ${i + 1}`;
-      select.appendChild(opt);
-    });
-    select.onchange = () => startCamera(select.value);
-    if (videoInputs.length) {
-      const back = videoInputs.find(d => /back|rear/gi.test(d.label));
-      const defaultId = back ? back.deviceId : videoInputs[videoInputs.length - 1].deviceId;
-      select.value = defaultId;
-      startCamera(defaultId);
-    }
-  }
-
-  // Start camera with given device ID
-  function startCamera(deviceId) {
-    if (window.currentStream) {
-      window.currentStream.getTracks().forEach(t => t.stop());
-    }
-    navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    })
-    .then(stream => {
-      window.currentStream = stream;
-      video.srcObject = stream;
-      video.onloadedmetadata = () => video.play();
-      stream.getVideoTracks().forEach(track => console.log('Using track:', track.label));
-      tick();
-    })
-    .catch(err => console.error('Camera error:', err));
-  }
-
-  // Main scanning loop
-  function tick() {
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imgData.data, imgData.width, imgData.height);
-      if (code && code.data) verifyToken(code.data.trim());
-    }
-    requestAnimationFrame(tick);
-  }
-
-  // Verify scanned token
-  async function verifyToken(raw) {
-    const buf = new TextEncoder().encode(raw);
-    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
-    const hashArray = Array.from(new Uint8Array(hashBuf));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    if (tokensMap[hashHex] && !seen.has(hashHex)) {
-      seen.add(hashHex);
-      feedback.textContent = '✔️';
-      feedback.className = 'check';
-      const li = document.createElement('li');
-      li.textContent = tokensMap[hashHex];
-      li.classList.add('attended');
-      document.getElementById('attendance').appendChild(li);
-    } else {
-      feedback.textContent = '❌';
-      feedback.className = 'cross';
-    }
-    setTimeout(() => { feedback.textContent = ''; }, 1000);
-  }
-  </script>
-</body>
-</html>
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Event Attendance Scanner</title>
-  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
-  <style>
-    body { font-family: sans-serif; text-align: center; }
-    video { width: 100%; max-width: 400px; }
-    #feedback { font-size: 3em; margin: 20px; }
-    .check { color: green; }
-    .cross { color: red; }
-    #attendance { list-style: none; padding: 0; }
-    #attendance li.attended { color: green; }
-  </style>
-</head>
-<body>
-  <h1>Scan Your QR Code</h1>
-  <video id="video" autoplay muted playsinline style="border:1px solid #ccc; width:100%; max-width:400px; background:#000;" ></video>
-  <canvas id="canvas" hidden></canvas> id="canvas" hidden></canvas>
-  <div id="feedback"></div>
-  <h2>Checked-in Guests</h2>
-  <ul id="attendance"></ul>
-
-  <script>
-  let tokensMap = {};
-  let seen = new Set();
-
-  fetch('tokens.json')
-    .then(res => res.json())
-    .then(data => { tokensMap = data; startCamera(); });
-
-  function startCamera() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => { document.getElementById('video').srcObject = stream; tick(); });
-  }
-
-  function tick() {
     const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imgData.data, imgData.width, imgData.height);
-      if (code && code.data) {
-        verifyToken(code.data.trim());
+    const canvasEl = document.getElementById('canvas');
+    const ctx = canvasEl.getContext('2d');
+    const statusEl = document.getElementById('status');
+    let tokens = [];
+    let lastCode = null;
+
+    // Load the token database
+    fetch('tokens.json')
+      .then(res => res.json())
+      .then(data => { tokens = data; })
+      .catch(err => console.error('Failed to load tokens:', err));
+
+    // Start camera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        video.srcObject = stream;
+        video.play();
+        requestAnimationFrame(scanFrame);
+      })
+      .catch(err => {
+        console.error('Camera error:', err);
+        statusEl.textContent = 'Camera error';
+      });
+
+    function scanFrame() {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvasEl.width = video.videoWidth;
+        canvasEl.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvasEl.width, canvasEl.height);
+        const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data !== lastCode) {
+          lastCode = code.data;
+          verifyCode(code.data);
+        }
+      }
+      requestAnimationFrame(scanFrame);
+    }
+
+    function verifyCode(data) {
+      if (tokens.includes(data)) {
+        statusEl.textContent = '✔️ Verified';
+        statusEl.style.color = 'lime';
+      } else {
+        statusEl.textContent = '❌ Not recognized';
+        statusEl.style.color = 'red';
       }
     }
-    requestAnimationFrame(tick);
-  }
-
-  async function verifyToken(raw) {
-    const feedback = document.getElementById('feedback');
-    const buf = new TextEncoder().encode(raw);
-    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
-    const hashArray = Array.from(new Uint8Array(hashBuf));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    if (tokensMap[hashHex] && !seen.has(hashHex)) {
-      seen.add(hashHex);
-      feedback.textContent = '✔️';
-      feedback.className = 'check';
-      const li = document.createElement('li');
-      li.textContent = tokensMap[hashHex];
-      li.classList.add('attended');
-      document.getElementById('attendance').appendChild(li);
-    } else {
-      feedback.textContent = '❌';
-      feedback.className = 'cross';
-    }
-
-    setTimeout(() => { feedback.textContent = ''; }, 1000);
-  }
   </script>
 </body>
 </html>
